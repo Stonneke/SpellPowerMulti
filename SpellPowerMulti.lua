@@ -3,6 +3,12 @@ class = "warlock" -- Change between "warlock", "sp", "frost", "fire"
 positionX = 0 -- Change X position of window
 positionY = -100 -- Change Y position of window
 
+-- If SavedVariables are already available at file load time, use them immediately.
+if SpellPowerMultiDB and SpellPowerMultiDB.positionX and SpellPowerMultiDB.positionY then
+  positionX = SpellPowerMultiDB.positionX
+  positionY = SpellPowerMultiDB.positionY
+end
+
 function checkDebuffs()
   -- Reset debuffs
   spellPowerMulti.cos:SetTextColor(1, 0, 0, 1)
@@ -56,13 +62,53 @@ multiplier = 0
 -- Sets up basic frame stuff
 spellPowerMulti = CreateFrame('Frame')
 spellPowerMulti:SetFrameStrata("BACKGROUND")
-spellPowerMulti:SetPoint("CENTER", positionX, positionY)
+spellPowerMulti:SetPoint("CENTER", UIParent, "CENTER", positionX, positionY)
 spellPowerMulti:SetWidth(110)
 spellPowerMulti:SetHeight(50)
 spellPowerMulti:SetBackdrop(backdrop)
 spellPowerMulti:SetBackdropColor(0, 0, 0, 0.5)
 
+local function savePosition()
+  local centerX, centerY = spellPowerMulti:GetCenter()
+  if centerX and centerY then
+    positionX = centerX - (UIParent:GetWidth() / 2)
+    positionY = centerY - (UIParent:GetHeight() / 2)
+    SpellPowerMultiDB = SpellPowerMultiDB or {}
+    SpellPowerMultiDB.positionX = positionX
+    SpellPowerMultiDB.positionY = positionY
+  end
+end
+
+local function loadPosition()
+  SpellPowerMultiDB = SpellPowerMultiDB or {}
+  if SpellPowerMultiDB.positionX == nil then
+    SpellPowerMultiDB.positionX = positionX
+  end
+  if SpellPowerMultiDB.positionY == nil then
+    SpellPowerMultiDB.positionY = positionY
+  end
+
+  positionX = SpellPowerMultiDB.positionX
+  positionY = SpellPowerMultiDB.positionY
+  spellPowerMulti:ClearAllPoints()
+  spellPowerMulti:SetPoint("CENTER", UIParent, "CENTER", positionX, positionY)
+end
+
+local hasLoadedPosition = false
+
 -- Makes frame draggable
+spellPowerMulti:EnableMouse(true)
+spellPowerMulti:SetMovable(true)
+spellPowerMulti:RegisterForDrag("LeftButton")
+spellPowerMulti:SetScript("OnDragStart", function()
+  spellPowerMulti:StartMoving()
+end)
+spellPowerMulti:SetScript("OnDragStop", function()
+  spellPowerMulti:StopMovingOrSizing()
+  savePosition()
+  spellPowerMulti:ClearAllPoints()
+  spellPowerMulti:SetPoint("CENTER", UIParent, "CENTER", positionX, positionY)
+end)
 
 
 -- "Damage Multiplier"
@@ -105,7 +151,28 @@ spellPowerMulti.sw:SetText("SW")
 spellPowerMulti.sw:SetTextColor(1, 0, 0, 1)
 
 
-spellPowerMulti:SetScript('OnEvent', checkDebuffs)
+spellPowerMulti:SetScript('OnEvent', function(self, eventName, eventArg1)
+  local currentEvent = eventName or rawget(_G, 'event')
+  local currentArg1 = eventArg1 or rawget(_G, 'arg1')
+
+  if not hasLoadedPosition and ((currentEvent == 'ADDON_LOADED' and currentArg1 == 'SpellPowerMulti') or currentEvent == 'VARIABLES_LOADED') then
+    loadPosition()
+    hasLoadedPosition = true
+    return
+  end
+
+  if currentEvent == 'PLAYER_LOGOUT' then
+    savePosition()
+    return
+  end
+
+  if currentEvent == 'UNIT_AURA' or currentEvent == 'PLAYER_TARGET_CHANGED' then
+    checkDebuffs()
+  end
+end)
+spellPowerMulti:RegisterEvent('ADDON_LOADED')
+spellPowerMulti:RegisterEvent('VARIABLES_LOADED')
+spellPowerMulti:RegisterEvent('PLAYER_LOGOUT')
 spellPowerMulti:RegisterEvent('UNIT_AURA')
 spellPowerMulti:RegisterEvent('PLAYER_TARGET_CHANGED')
 
